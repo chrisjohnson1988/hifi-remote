@@ -6,6 +6,8 @@ const int RECV_PIN = 11;
 const int REPEAT_DELAY_RECV = 110;
 const int REPEAT_DELAY_SEND = 42;
 const int NONE              = 0;
+const int RC_MAX_PULSE_GAP  = 300;
+const int RC_PULSE_CYCLE    = 7;
 const unsigned int RC_PROTOCOL = 1;
 const unsigned int POWERED_ON_STORAGE = 0;
 const unsigned long RC_POWER_ON       = 0x00000551;
@@ -41,22 +43,43 @@ const SoundSrc SOURCES[] = {
 const unsigned int SOURCE_LENGTH = 7;
 const unsigned int MUTE_VOLUME = 0;
 const unsigned int STARTING_SOURCE = 4;
+const unsigned int SECONDARY_SOURCE = 3;
 unsigned int currVolume = SOURCES[STARTING_SOURCE].volume;
 boolean poweredOn;
 boolean keySent;
-unsigned long lastRecvMillis;
-unsigned long lastRecvKey;
+unsigned long lastRcRecvMillis;
+unsigned long rcPulseCount;
+unsigned long lastIrRecvMillis;
+unsigned long lastIrRecvKey;
 IRrecv irrecv(RECV_PIN);
 IRsend irsend;
 RCSwitch rcswitch = RCSwitch();
 decode_results results;
 
 /**
- * Handle an RC key push
+ * Handle an RC key push. Long pushes of the RC_POWER_ON button are recorded and handled by handleRCPulse
  */
 void handleRC(unsigned long key) {
-  if      (key == RC_POWER_ON)  { setPower(true); }
+  if (key == RC_POWER_ON)  { 
+    if(millis() - lastRcRecvMillis < RC_MAX_PULSE_GAP) {
+      handleRCPulse(rcPulseCount++/RC_PULSE_CYCLE);
+    } else {
+      rcPulseCount = 0;
+    }
+    lastRcRecvMillis = millis();
+  }
   else if (key == RC_POWER_OFF) { setPower(false); }
+}
+
+/**
+ * Cycle through the sources depending on how long the RC_POWER_ON button has been held down
+ */
+void handleRCPulse(unsigned int count) {
+  if(count == 0) {
+   setPower(true);
+  } else {
+   setSource(SECONDARY_SOURCE);
+  } 
 }
 
 /**
@@ -66,14 +89,14 @@ void handleRC(unsigned long key) {
 void handleIR(decode_results *results) {
   if (results->decode_type == NEC) {
     unsigned long value = results->value;
-    if (value == REPEAT && lastRecvKey != NONE && millis() - lastRecvMillis < REPEAT_DELAY_RECV) {
-      handleKey(lastRecvKey, true);
+    if (value == REPEAT && lastIrRecvKey != NONE && millis() - lastIrRecvMillis < REPEAT_DELAY_RECV) {
+      handleKey(lastIrRecvKey, true);
     } else if (value != REPEAT) {
-      handleKey(lastRecvKey = value, false);
+      handleKey(lastIrRecvKey = value, false);
     } else {
-      lastRecvKey = NONE;
+      lastIrRecvKey = NONE;
     }
-    lastRecvMillis = millis();
+    lastIrRecvMillis = millis();
   }
 }
 
@@ -133,7 +156,6 @@ void setSource(unsigned int src) {
  */
 void setVolume(unsigned int target) {
   int delta = target - currVolume;
-  previousVolume = currVolume;
   unsigned long button = (delta > 0) ? YAMAHA_VOLUMEUP: YAMAHA_VOLUMEDOWN;
   for (int i=0; i < abs(delta); i++) {
     sendIR(button);
@@ -199,7 +221,7 @@ void reset() {
 }
 
 void setup() {
-  //Serial.begin(9600);
+  //Serial.begin(115200);
   poweredOn = EEPROM.read(POWERED_ON_STORAGE) == true;
   irrecv.enableIRIn();
 }
