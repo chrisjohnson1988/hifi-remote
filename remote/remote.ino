@@ -61,11 +61,10 @@ decode_results results;
  */
 void handleRC(unsigned long key) {
   if (key == RC_POWER_ON)  { 
-    if(millis() - lastRcRecvMillis < RC_MAX_PULSE_GAP) {
-      handleRCPulse(rcPulseCount++/RC_PULSE_CYCLE);
-    } else {
+    if(millis() - lastRcRecvMillis > RC_MAX_PULSE_GAP) {
       rcPulseCount = 0;
     }
+    handleRCPulse(rcPulseCount++/RC_PULSE_CYCLE);
     lastRcRecvMillis = millis();
   }
   else if (key == RC_POWER_OFF) { setPower(false); }
