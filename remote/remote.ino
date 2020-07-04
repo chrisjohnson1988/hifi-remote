@@ -2,7 +2,12 @@
 #include <EEPROM.h>
 #include <IRremote.h>
 
-const int RECV_PIN = 11;
+const unsigned int RECV_PIN = 11;
+const unsigned int NULL_PIN = 0;
+const unsigned int BLUETOOTH_SWITCH_PIN = 9;
+const unsigned int SWITCHES[] = {BLUETOOTH_SWITCH_PIN};
+const unsigned int SWITCHES_LENGTH = 1;
+
 const int REPEAT_DELAY_RECV = 110;
 const int REPEAT_DELAY_SEND = 42;
 const int NONE              = 0;
@@ -29,17 +34,19 @@ const unsigned int VOLUME_MIN = 0;
 struct SoundSrc {
   unsigned long key;
   unsigned int volume;
+  unsigned int pin;
 };
 
 const SoundSrc SOURCES[] = {
-  {YAMAHA_PHONO, 35},
-  {YAMAHA_DOCK,  0},
-  {YAMAHA_CD,    40},
-  {YAMAHA_LINE1, 50},
-  {YAMAHA_LINE2, 50},
-  {YAMAHA_LINE3, 40},
-  {YAMAHA_TUNER, 40}
+  {YAMAHA_PHONO, 35, NULL_PIN},
+  {YAMAHA_DOCK,  0,  NULL_PIN},
+  {YAMAHA_CD,    40, NULL_PIN},
+  {YAMAHA_LINE1, 50, BLUETOOTH_SWITCH_PIN},
+  {YAMAHA_LINE2, 50, NULL_PIN},
+  {YAMAHA_LINE3, 40, NULL_PIN},
+  {YAMAHA_TUNER, 40, NULL_PIN}
 };
+
 const unsigned int SOURCE_LENGTH = 7;
 const unsigned int MUTE_VOLUME = 0;
 const unsigned int STARTING_SOURCE = 4;
@@ -143,11 +150,33 @@ void setPower(boolean on) {
 
 /**
  * Set the hifi source to the source represented within the SOURCES array. Adjust the volume
- * to the default level for this source.
+ * to the default level for this source and switch on an external device if a switch pin is defined.
  */
 void setSource(unsigned int src) {
+  powerSourceOn(SOURCES[src].pin);
   sendIR(SOURCES[src].key);
+  powerSourcesOff(SOURCES[src].pin);
   setVolume(SOURCES[src].volume);
+}
+
+/**
+ * Power up the source if the pin value provided is defined
+ */
+void powerSourceOn(unsigned int pin) {
+  if(pin != NULL_PIN) {
+    digitalWrite(pin, HIGH);
+  }
+}
+
+/**
+ * Switch all the external device pins LOW except the one specified.
+ */
+void powerSourcesOff(unsigned int pin) {
+ for (int i=0; i < SWITCHES_LENGTH; i++) {
+   if(pin != SWITCHES[i]) {
+     digitalWrite(SWITCHES[i], LOW);
+   }
+ }
 }
 
 /**
@@ -223,6 +252,9 @@ void setup() {
   //Serial.begin(115200);
   poweredOn = EEPROM.read(POWERED_ON_STORAGE) == true;
   irrecv.enableIRIn();
+  for (int i=0; i < SWITCHES_LENGTH; i++) {
+    pinMode(SWITCHES[i], OUTPUT);
+  }
 }
 
 void loop() {
