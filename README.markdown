@@ -12,6 +12,8 @@ The project is build around a 5v 16mhz arduino and requires:
 - A 433mhz receiver
 - IR emitter
 - IR receiver
+- TIP120
+- MT3608 DC-DC boost converter
 
 Being a 5v arduino, the project can be powered by a USB power source using the
 *VCC* and *GND* pins.
