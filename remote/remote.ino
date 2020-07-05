@@ -146,6 +146,9 @@ void setPower(boolean on) {
     sendIR(YAMAHA_POWER);
     EEPROM.write(POWERED_ON_STORAGE, poweredOn = on);
   }
+  if(!on) {
+    powerSourcesOff();
+  }
 }
 
 /**
@@ -155,7 +158,6 @@ void setPower(boolean on) {
 void setSource(unsigned int src) {
   powerSourceOn(SOURCES[src].pin);
   sendIR(SOURCES[src].key);
-  powerSourcesOff(SOURCES[src].pin);
   setVolume(SOURCES[src].volume);
 }
 
@@ -171,11 +173,9 @@ void powerSourceOn(unsigned int pin) {
 /**
  * Switch all the external device pins LOW except the one specified.
  */
-void powerSourcesOff(unsigned int pin) {
+void powerSourcesOff() {
  for (int i=0; i < SWITCHES_LENGTH; i++) {
-   if(pin != SWITCHES[i]) {
-     digitalWrite(SWITCHES[i], LOW);
-   }
+   digitalWrite(SWITCHES[i], LOW);
  }
 }
 
