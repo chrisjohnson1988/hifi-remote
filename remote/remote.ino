@@ -48,7 +48,7 @@ const SoundSrc SOURCES[] = {
   {YAMAHA_PHONO, 35, NULL_PIN},
   {YAMAHA_DOCK,  0,  NULL_PIN},
   {YAMAHA_CD,    40, NULL_PIN},
-  {YAMAHA_LINE1, 50, BLUETOOTH_SWITCH_PIN},
+  {YAMAHA_LINE1, 50, NULL_PIN},
   {YAMAHA_LINE2, 50, NULL_PIN},
   {YAMAHA_LINE3, 50, NULL_PIN},
   {YAMAHA_TUNER, 40, NULL_PIN}
@@ -342,7 +342,7 @@ void setup() {
 
 void loop() {
   receiveIR();
-  receiveRC();
+  // receiveRC();
   receiveTrigger();
   avoidAutoStandby();
   reset();
