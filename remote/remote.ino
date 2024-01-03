@@ -7,12 +7,16 @@ const unsigned int NULL_PIN = 0;
 const unsigned int BLUETOOTH_SWITCH_PIN = 9;
 const unsigned int SWITCHES[] = {BLUETOOTH_SWITCH_PIN};
 const unsigned int SWITCHES_LENGTH = 1;
+const unsigned int SNAPCAST_TRIGGER_PIN = 13;
+const unsigned int TV_TRIGGER_PIN = 4;
 
 const int REPEAT_DELAY_RECV = 110;
+const int POWER_ON_DELAY    = 300;
 const int REPEAT_DELAY_SEND = 42;
 const int NONE              = 0;
 const int RC_MAX_PULSE_GAP  = 300;
 const int RC_PULSE_CYCLE    = 7;
+const unsigned long KEEP_ON_TIME      = 14400000;
 const unsigned int RC_PROTOCOL = 1;
 const unsigned int POWERED_ON_STORAGE = 0;
 const unsigned long RC_POWER_ON       = 0x00000551;
@@ -30,6 +34,9 @@ const unsigned long YAMAHA_VOLUMEDOWN = 0x5EA1D8A7;
 const unsigned long YAMAHA_MUTE       = 0x5EA13847;
 const unsigned int VOLUME_MAX = 153;
 const unsigned int VOLUME_MIN = 0;
+const unsigned int BLUETOOTH_SOURCE = 3;
+const unsigned int TV_SOURCE = 4;
+const unsigned int SNAPCAST_SOURCE = 5;
 
 struct SoundSrc {
   unsigned long key;
@@ -43,21 +50,33 @@ const SoundSrc SOURCES[] = {
   {YAMAHA_CD,    40, NULL_PIN},
   {YAMAHA_LINE1, 50, BLUETOOTH_SWITCH_PIN},
   {YAMAHA_LINE2, 50, NULL_PIN},
-  {YAMAHA_LINE3, 40, NULL_PIN},
+  {YAMAHA_LINE3, 50, NULL_PIN},
   {YAMAHA_TUNER, 40, NULL_PIN}
 };
 
+struct Trigger {
+  unsigned int src;
+  unsigned int pin;
+  boolean state;
+};
+
+Trigger TRIGGERS[] = {
+  {TV_SOURCE,       TV_TRIGGER_PIN,       false},
+  {SNAPCAST_SOURCE, SNAPCAST_TRIGGER_PIN, false}
+};
+const unsigned int TRIGGERS_LENGTH = 2;
+
 const unsigned int SOURCE_LENGTH = 7;
 const unsigned int MUTE_VOLUME = 0;
-const unsigned int STARTING_SOURCE = 4;
-const unsigned int SECONDARY_SOURCE = 3;
-unsigned int currVolume = SOURCES[STARTING_SOURCE].volume;
+unsigned int currVolume = SOURCES[TV_SOURCE].volume;
+unsigned int currSrc = TV_SOURCE;
 boolean poweredOn;
 boolean keySent;
 unsigned long lastRcRecvMillis;
 unsigned long rcPulseCount;
 unsigned long lastIrRecvMillis;
 unsigned long lastIrRecvKey;
+unsigned long lastKeepOnMillis;
 IRrecv irrecv(RECV_PIN);
 IRsend irsend;
 RCSwitch rcswitch = RCSwitch();
@@ -82,9 +101,9 @@ void handleRC(unsigned long key) {
  */
 void handleRCPulse(unsigned int count) {
   if(count == 0) {
-   setPower(true);
+    setSource(TV_SOURCE);
   } else {
-   setSource(SECONDARY_SOURCE);
+    setSource(BLUETOOTH_SOURCE);
   } 
 }
 
@@ -135,16 +154,13 @@ void handleKey(unsigned long key, boolean isRepeat) {
 
 /**
  * Turn the hifi on or off based upon the passed in value. Store the current powered on value in the EEPROM for
- * retrieval after power loss. This function will return the hifi to the initial source and volume.
+ * retrieval after power loss.
  */
 void setPower(boolean on) {
-  if (poweredOn) {
-    setSource(STARTING_SOURCE);
-    delay(REPEAT_DELAY_SEND);
-  }
   if (poweredOn != on) {
     sendIR(YAMAHA_POWER);
     EEPROM.write(POWERED_ON_STORAGE, poweredOn = on);
+    delay(POWER_ON_DELAY);
   }
   if(!on) {
     powerSourcesOff();
@@ -156,6 +172,8 @@ void setPower(boolean on) {
  * to the default level for this source and switch on an external device if a switch pin is defined.
  */
 void setSource(unsigned int src) {
+  currSrc = src;
+  setPower(true);
   powerSourceOn(SOURCES[src].pin);
   sendIR(SOURCES[src].key);
   setVolume(SOURCES[src].volume);
@@ -239,6 +257,54 @@ void receiveRC() {
 }
 
 /**
+ * Check if the provided src has an input trigger
+ */
+boolean isTriggerableSrc(unsigned int src) {
+  for (int i=0; i < TRIGGERS_LENGTH; i++) {
+    if(TRIGGERS[i].src == src) {
+      return true;
+    } 
+  }
+  return false;
+}
+
+/**
+ * Handle the newly turned on source. If we are listening to a non triggerable source (e.g. a record)
+ * then we are going to ignore the adjusted state.
+ */
+void handleTrigger(unsigned int trigger) {
+  if(isTriggerableSrc(currSrc)) {
+    if(TRIGGERS[trigger].state) {
+      setSource(TRIGGERS[trigger].src);
+    }
+    else {
+      // Serial.println("Trigger turned off. Checking if any others are on");
+      for (int i=0; i < TRIGGERS_LENGTH; i++) {
+        if(TRIGGERS[i].state) {
+          setSource(TRIGGERS[i].src);
+          return;
+        } 
+      }
+      setPower(false);
+    }
+  }
+}
+
+/**
+ * Check each input trigger and look for any changes to be handled
+ */
+void receiveTrigger() {
+  for (int i=0; i < TRIGGERS_LENGTH; i++) {
+    boolean readState = digitalRead(TRIGGERS[i].pin);
+    if (readState != TRIGGERS[i].state) {
+      TRIGGERS[i].state = readState;
+      handleTrigger(i);
+      return;
+    }
+  }
+}
+
+/**
  * Check to see if an IR signal has been sent. If so, reenable the IR receiver.
  */
 void reset() {
@@ -248,17 +314,36 @@ void reset() {
   }
 }
 
+/**
+ * I am unable to turn off the auto standby feature of my amp. Do something to keep it on.
+ */
+void avoidAutoStandby() {
+  if(millis() - lastKeepOnMillis >= KEEP_ON_TIME) {
+    if(poweredOn) {
+      volUp();
+      delay(REPEAT_DELAY_SEND);
+      volDown();
+    }
+    lastKeepOnMillis = millis();
+  }
+}
+
 void setup() {
-  //Serial.begin(115200);
+  // Serial.begin(115200);
   poweredOn = EEPROM.read(POWERED_ON_STORAGE) == true;
   irrecv.enableIRIn();
   for (int i=0; i < SWITCHES_LENGTH; i++) {
     pinMode(SWITCHES[i], OUTPUT);
   }
+  for (int i=0; i < TRIGGERS_LENGTH; i++) {
+    pinMode(TRIGGERS[i].pin, INPUT);
+  }
 }
 
 void loop() {
   receiveIR();
-  receiveRC();  
+  receiveRC();
+  receiveTrigger();
+  avoidAutoStandby();
   reset();
 }
