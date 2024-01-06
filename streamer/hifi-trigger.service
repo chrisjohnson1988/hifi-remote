@@ -1,0 +1,9 @@
+[Unit]
+Description=Trigger the power of the hifi when snapcast starts/stops playing
+
+[Service]
+ExecStart=/usr/local/sbin/hifi-trigger.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
