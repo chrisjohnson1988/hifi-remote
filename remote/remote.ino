@@ -325,7 +325,6 @@ void reset() {
  */
 void handleScheduledPowerOff() {
   if(isPowerOffScheduled && millis() > scheduledPowerOffMillis) {
-    isPowerOffScheduled = false;
     setPower(false);
   }
 }
