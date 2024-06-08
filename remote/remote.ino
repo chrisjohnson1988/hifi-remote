@@ -58,11 +58,12 @@ struct Trigger {
   unsigned int src;
   unsigned int pin;
   boolean state;
+  unsigned long powerOffDelay;
 };
 
 Trigger TRIGGERS[] = {
-  {TV_SOURCE,       TV_TRIGGER_PIN,       false},
-  {SNAPCAST_SOURCE, SNAPCAST_TRIGGER_PIN, false}
+  {TV_SOURCE,       TV_TRIGGER_PIN,       false, 0},
+  {SNAPCAST_SOURCE, SNAPCAST_TRIGGER_PIN, false, 600000}
 };
 const unsigned int TRIGGERS_LENGTH = 2;
 
@@ -77,6 +78,8 @@ unsigned long rcPulseCount;
 unsigned long lastIrRecvMillis;
 unsigned long lastIrRecvKey;
 unsigned long lastKeepOnMillis;
+boolean isPowerOffScheduled = false;
+unsigned long scheduledPowerOffMillis;
 IRrecv irrecv(RECV_PIN);
 IRsend irsend;
 RCSwitch rcswitch = RCSwitch();
@@ -165,6 +168,7 @@ void setPower(boolean on) {
   if(!on) {
     powerSourcesOff();
   }
+  isPowerOffScheduled = false; // Cancel any scheduled power off
 }
 
 /**
@@ -285,7 +289,9 @@ void handleTrigger(unsigned int trigger) {
           return;
         } 
       }
-      setPower(false);
+      // Schedule the amp to power off after a certain period of time.
+      isPowerOffScheduled = true;
+      scheduledPowerOffMillis = millis() + TRIGGERS[trigger].powerOffDelay;
     }
   }
 }
@@ -311,6 +317,16 @@ void reset() {
   if (keySent) {
     keySent = false;
     irrecv.enableIRIn();
+  }
+}
+
+/**
+ * Check to see if a scheduled power off is set and action it if ready.
+ */
+void handleScheduledPowerOff() {
+  if(isPowerOffScheduled && millis() > scheduledPowerOffMillis) {
+    isPowerOffScheduled = false;
+    setPower(false);
   }
 }
 
@@ -344,6 +360,7 @@ void loop() {
   receiveIR();
   // receiveRC();
   receiveTrigger();
+  handleScheduledPowerOff();
   avoidAutoStandby();
   reset();
 }
